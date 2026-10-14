@@ -109,3 +109,13 @@ git -C vendor/Ezo_I2c_lib checkout 5140af60b780123e6b3c5bf0f444ceb0b6c4d4cd
 ```
 
 Copy `firmware/pool_kit/secrets.example.h` to `firmware/pool_kit/secrets.h` and fill in local credentials. Build with the FQBN above. The signed-in website uses its own read-only API key, configured separately.
+
+## Approved public Wi-Fi portal and HTTPS
+
+The October 14, 2026 firmware update supports the specifically approved guest portal. Its configuration and accepted disclaimer fingerprint are in ignored `secrets.h`. On a captive session, it checks the network identity, portal destination, and normalized disclaimer SHA-256 before submitting the same acceptance form. It stops automatic acceptance if the disclaimer changes. Network checks run every minute while connected and retry every 30 seconds when internet access is unavailable. Wi-Fi reconnection remains automatic.
+
+ThingSpeak uploads use port 443 with certificate verification against DigiCert Global Root G2. NTP updates the device clock; a private build-time timestamp provides a clock floor until NTP is reachable. API keys are never sent in captive-portal requests. The network configuration does not alter EZO calibration.
+
+The uploaded firmware passed flash hash verification. The kit submitted the approved portal form, verified internet access, and uploaded readings over HTTPS. Public dashboard entries 96, 97, and 98 were verified at 3:57:33, 3:57:50, and 3:58:06 PM EDT on October 14, 2026. The public dashboard is [AquaSense on Vercel](https://website-lake-ten-95.vercel.app).
+
+Initial portal acceptance and repeated uploads are tested. Future session-expiry renewal is configured but has not yet been observed through a naturally expiring session. Public Wi-Fi availability and unchanged portal terms remain external dependencies.

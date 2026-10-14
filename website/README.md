@@ -35,7 +35,7 @@ Tests cover missing values, field mapping, cached/fresh feed merging, stale time
 
 ## Changing Wi-Fi later
 
-The kit currently uses the configured home network. At the pool, confirm an internet-connected 2.4 GHz network and its credentials. Connect the kit to the Mac temporarily, update the private firmware credentials, compile and flash with explicit approval, then verify uploads before moving it back to USB power. Calibration lives on the separate EZO circuits. The current firmware does not provide a browser-based Wi-Fi setup portal or captive-portal sign-in.
+The kit currently uses the configured home network. At the pool, confirm an internet-connected 2.4 GHz network and its credentials. Connect the kit to the Mac temporarily, update the private firmware credentials, compile and flash with explicit approval, then verify uploads before moving it back to USB power. Calibration lives on the separate EZO circuits. The firmware supports the specifically approved captive portal and checks its disclaimer fingerprint before acceptance. Other portals require inspection and explicit approval. It does not provide a browser-based Wi-Fi setup screen.
 
 ThingSpeak API references: [Read Data](https://www.mathworks.com/help/thingspeak/readdata.html), [Channel Data Control](https://www.mathworks.com/help/thingspeak/channel-control.html).
 

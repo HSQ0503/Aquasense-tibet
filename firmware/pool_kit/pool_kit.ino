@@ -3,6 +3,12 @@
 #include <iot_cmd.h>
 #include <math.h>
 #include "secrets.h"
+#include <WiFiClientSecure.h>
+#include "thingspeak_ca.h"
+#include "network_access.h"
+#define TS_ENABLE_SSL
+// ThingSpeak 2.1.1 checks the pre-ESP32-3.x header guard to select port 443.
+#define WiFiClientSecure_h
 #include <WiFi.h>                                                //include wifi library
 #include "ThingSpeak.h"                                          //include thingspeak library
 #include <sequencer4.h>                                          //imports a 4 function sequencer
@@ -18,7 +24,7 @@
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
 
-WiFiClient client;                                              //declare that this device connects to a Wi-Fi network,create a connection to a specified internet IP address
+WiFiClientSecure client;                                              //declare that this device connects to a Wi-Fi network,create a connection to a specified internet IP address
 
 // Use dedicated hardware SPI pins
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
@@ -34,6 +40,7 @@ float orp_reading = NAN;
 float temperature = NAN;
 float pending_temperature = NAN;
 bool readings_ready = false;
+bool internet_ready = false;
 unsigned long last_reading_at = 0;
 
 Ezo_board PH = Ezo_board(99, "PH");           //create a PH circuit object, who's address is 99 and name is "PH"
@@ -70,15 +77,23 @@ bool wifi_isconnected() {                           //function to check if wifi 
   return (WiFi.status() == WL_CONNECTED);
 }
 
-void reconnect_wifi() {                                   //function to reconnect wifi if its not connected
+void reconnect_wifi() {
+  static unsigned long last_check = 0;
   if (!wifi_isconnected()) {
+    internet_ready = false;
     WiFi.begin(ssid.c_str(), pass.c_str());
-    Serial.println("connecting to wifi");
+    Serial.println("Connecting to configured Wi-Fi");
+    return;
   }
+  unsigned long interval = internet_ready ? 60000 : 30000;
+  if (last_check && millis() - last_check < interval) return;
+  last_check = millis();
+  internet_ready = check_internet_access();
+  Serial.println(internet_ready ? "Wi-Fi internet ready" : "Waiting for internet access");
 }
 
 void thingspeak_send() {
-  if (!send_to_thingspeak || !wifi_isconnected() || !readings_ready ||
+  if (!send_to_thingspeak || !wifi_isconnected() || !internet_ready || !readings_ready ||
       millis() - last_reading_at > 10000) return;
 
   ThingSpeak.setField(1, isfinite(ph_reading) ? String(ph_reading, 2) : String(""));
@@ -89,6 +104,7 @@ void thingspeak_send() {
   int return_code = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
   Serial.print("ThingSpeak result: ");
   Serial.println(return_code);
+  if (return_code < 0) internet_ready = false;
 }
 
 void step1();      //forward declarations of functions to use them in the sequencer before defining them
@@ -134,6 +150,10 @@ void setup() {
   canvas.fillScreen(ST77XX_BLACK);
 
   WiFi.mode(WIFI_STA);                    //set ESP32 mode as a station to be connected to wifi network
+  WiFi.setAutoReconnect(true);
+  initialize_network_clock();
+  client.setCACert(THINGSPEAK_ROOT_CA);
+  client.setHandshakeTimeout(8);
   ThingSpeak.begin(client);               //enable ThingSpeak connection
   Wifi_Seq.reset();                       //initialize the sequencers
   Seq.reset();
