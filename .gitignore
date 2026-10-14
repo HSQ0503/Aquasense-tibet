@@ -1,0 +1,6 @@
+.tools/
+.private/
+.build/
+vendor/
+firmware/pool_kit/secrets.h
+.DS_Store
