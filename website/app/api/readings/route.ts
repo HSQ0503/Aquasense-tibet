@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { mergeReadings, parseFeed, ranges, type Range } from "@/lib/telemetry";
 
@@ -6,10 +5,10 @@ export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store, max-age=0" };
 
 export async function GET(request: Request) {
-  if (!(await getChatGPTUser())) return Response.json({ error: "Sign in to view this station." }, { status: 401, headers });
+  if (process.env.VERCEL !== "1" && !(await getChatGPTUser())) return Response.json({ error: "Sign in to view this station." }, { status: 401, headers });
   const range = new URL(request.url).searchParams.get("range") ?? "15m";
   if (!Object.hasOwn(ranges, range)) return Response.json({ error: "Choose a supported time range." }, { status: 400, headers });
-  const key = (env as { THINGSPEAK_READ_API_KEY?: string }).THINGSPEAK_READ_API_KEY;
+  const key = process.env.THINGSPEAK_READ_API_KEY;
   if (!key) return Response.json({ error: "The station connection has not been configured." }, { status: 503, headers });
   const minutes = ranges[range as Range];
 

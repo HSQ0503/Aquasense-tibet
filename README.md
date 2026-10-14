@@ -93,7 +93,7 @@ See [SETUP-REFERENCES.md](SETUP-REFERENCES.md) for official firmware, board, bac
 
 ## Website
 
-The private dashboard is deployed at [AquaSense](https://aquasense-han.hsq0503.chatgpt.site). Source is in `website/`. It refreshes every 16 seconds with pH, ORP, temperature, timestamps, selectable history, and CSV export. Its server uses the ThingSpeak read key stored as a runtime secret, and both the page and API require sign-in.
+The private dashboard is deployed at [AquaSense](https://aquasense-han.hsq0503.chatgpt.site). Source is in `website/`. It refreshes every 16 seconds with pH, ORP, temperature, timestamps, selectable history, and CSV export. Its server uses the ThingSpeak read key stored as a runtime secret, and both the page and API require sign-in on ChatGPT Sites. The Vercel deployment is intentionally public, with its read key kept server-side.
 
 Standalone operation was verified on October 14, 2026: the Mac no longer detected the kit on USB, and ThingSpeak entries 47, 48, and 49 arrived 16 seconds apart while the kit ran from its USB power adapter. The Mac does not need to remain at the pool.
 

@@ -36,7 +36,7 @@ function downloadCsv(readings: Reading[]) {
   link.href = url; link.download = "aquasense-readings.csv"; link.click(); URL.revokeObjectURL(url);
 }
 
-export function Dashboard() {
+export function Dashboard({ publicReadings = false }: { publicReadings?: boolean }) {
   const [range, setRange] = useState<Range>("15m");
   const [metric, setMetric] = useState<Metric>("ph");
   const [snapshot, setSnapshot] = useState<{ range: Range; data: Telemetry } | null>(null);
@@ -94,7 +94,7 @@ export function Dashboard() {
       <header className="topbar">
         <Link className="brand" href="/" aria-label="AquaSense home"><span className="brand-icon"><Waves size={24} /></span>AquaSense<span className="brand-divider" /><span className="brand-note">Water monitoring</span></Link>
         <nav aria-label="Main navigation"><button className={view === "live" ? "active" : ""} onClick={() => setView("live")}>Live readings</button><button className={view === "setup" ? "active" : ""} onClick={() => setView("setup")}>Station guide</button></nav>
-        <span className="private-badge"><ShieldCheck size={15} />Private station</span>
+        <span className="private-badge"><ShieldCheck size={15} />{publicReadings ? "Public station" : "Private station"}</span>
       </header>
 
       <main className="page-wrap">
@@ -105,7 +105,7 @@ export function Dashboard() {
             <div className="connection-state" role="status"><span className={`status-pill ${live ? "live" : "waiting"}`}><span className="status-dot" />{status}</span><span className="muted">Last reading {ageLabel(latest?.time, now)}</span></div>
           </section>
 
-          {error && <div className="notice" role="alert"><Info size={18} /><div>{error} {latest && "Showing the last received values."}<a href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in again</a></div></div>}
+          {error && <div className="notice" role="alert"><Info size={18} /><div>{error} {latest && "Showing the last received values."}{!publicReadings && <a href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in again</a>}</div></div>}
           {!error && latest && !live && <div className="notice"><Wifi size={18} /><span>No new reading for over a minute. Check the kit’s power and Wi-Fi, or send <code>datalog</code> if calibration paused uploads.</span></div>}
           <section className="measurements" aria-label="Latest sensor readings">
             {metricKeys.map(key => {
