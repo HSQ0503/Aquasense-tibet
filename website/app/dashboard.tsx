@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Activity, ArrowUpRight, Check, ChevronDown, Download, Droplets, Info, Radio, RefreshCw, ShieldCheck, Thermometer, Waves, Wifi, Zap } from "lucide-react";
+import { AlertPanel } from "./alert-panel";
+import { Activity, Check, ChevronDown, Download, Droplets, Info, Radio, RefreshCw, ShieldCheck, Thermometer, Waves, Wifi, Zap } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { chartReadings, isRecent, ranges, type Metric, type Range, type Reading, type Telemetry } from "@/lib/telemetry";
 
 const metrics = {
-  ph: { name: "pH", label: "Acidity", unit: "pH", decimals: 2, color: "#c1b2f5", icon: Droplets },
-  orp: { name: "ORP", label: "Oxidation-reduction potential", unit: "mV", decimals: 0, color: "#efba82", icon: Zap },
-  temperature: { name: "Temperature", label: "Water temperature", unit: "°C", decimals: 2, color: "#7fdccd", icon: Thermometer },
+  ph: { name: "pH", label: "Acidity / alkalinity", unit: "pH", decimals: 2, color: "#9abce5", icon: Droplets },
+  orp: { name: "ORP", label: "Oxidation-reduction potential", unit: "mV", decimals: 0, color: "#d7b784", icon: Zap },
+  temperature: { name: "Temperature", label: "Water temperature", unit: "°C", decimals: 2, color: "#87c2b2", icon: Thermometer },
 } as const;
 const metricKeys = Object.keys(metrics) as Metric[];
 const rangeLabels: Record<Range, string> = { "15m": "15 min", "1h": "1 hour", "6h": "6 hours", "24h": "24 hours" };
@@ -54,6 +55,8 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
   const values = readings.flatMap(row => row[metric] == null ? [] : [row[metric]]);
   const low = values.length ? Math.min(...values) : null;
   const high = values.length ? Math.max(...values) : null;
+  const chartPadding = metric === "ph" ? 0.5 : metric === "temperature" ? 1 : 25;
+  const chartDomain: [number, number] = low === null || high === null ? [0, 1] : [low - chartPadding, high + chartPadding];
   const status = error ? "Connection interrupted" : !latest ? (busy ? "Connecting" : "Waiting for readings") : live ? "Receiving data" : "No recent readings";
 
   useEffect(() => {
@@ -101,8 +104,8 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
         <div className="station-bar"><span><Radio size={16} />Tibet Butler Sensor</span><span className="station-id">Station 3536852</span></div>
         {view === "setup" ? <StationGuide /> : <>
           <section className="page-heading">
-            <div><h1>Your water, in view.</h1><p>pH, ORP, and temperature. Direct from your sensor station.</p></div>
-            <div className="connection-state" role="status"><span className={`status-pill ${live ? "live" : "waiting"}`}><span className="status-dot" />{status}</span><span className="muted">Last reading {ageLabel(latest?.time, now)}</span></div>
+            <div><h1>Water monitoring</h1><p>Live measurements from the Tibet Butler sensor station.</p></div>
+            <div className="connection-state"><span role="status" className={`status-pill ${live ? "live" : "waiting"}`}><span className="status-dot" />{status}</span><span className="muted">Last reading {ageLabel(latest?.time, now)}</span></div>
           </section>
 
           {error && <div className="notice" role="alert"><Info size={18} /><div>{error} {latest && "Showing the last received values."}{!publicReadings && <a href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in again</a>}</div></div>}
@@ -111,7 +114,7 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
             {metricKeys.map(key => {
               const config = metrics[key]; const Icon = config.icon;
               return <button key={key} className={`measurement ${metric === key ? "selected" : ""}`} style={{ "--metric": config.color } as React.CSSProperties} onClick={() => setMetric(key)} aria-pressed={metric === key} aria-label={`Show ${config.name} trend`}>
-                <div className="measurement-top"><span><Icon size={18} />{config.name}</span><ArrowUpRight size={16} className="metric-arrow" /></div>
+                <div className="measurement-top"><span><Icon size={18} />{config.name}</span><span className="chart-selection">{metric === key ? "Chart selected" : "View chart"}</span></div>
                 <div className="measurement-value">{formatValue(latest?.[key], key)}<span>{config.unit}</span></div>
                 <div className="measurement-footer"><span>{latest?.[key] == null ? "No measurement" : config.label}</span><span className="metric-line" /></div>
               </button>;
@@ -126,7 +129,7 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
                 {values.length ? <ResponsiveContainer width="100%" height="100%"><LineChart data={chart} margin={{ top: 16, right: 16, left: -18, bottom: 5 }}>
                   <CartesianGrid stroke="#25404c" strokeDasharray="3 5" vertical={false} />
                   <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={value => clock(Number(value))} tick={{ fill: "#9ab2bc", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={60} />
-                  <YAxis domain={["auto", "auto"]} tick={{ fill: "#9ab2bc", fontSize: 11 }} tickFormatter={value => Number(value).toFixed(metric === "orp" ? 0 : 1)} axisLine={false} tickLine={false} width={64} />
+                  <YAxis domain={chartDomain} tick={{ fill: "#9ab2bc", fontSize: 11 }} tickFormatter={value => Number(value).toFixed(metric === "orp" ? 0 : 2)} axisLine={false} tickLine={false} width={64} />
                   <Tooltip contentStyle={{ background: "#142c38", border: "1px solid #385361", borderRadius: 10, color: "#edf7f4", fontSize: 13 }} labelFormatter={value => clock(Number(value), true)} formatter={value => [value == null ? "Missing" : `${Number(value).toFixed(selected.decimals)} ${selected.unit}`, selected.name]} cursor={{ stroke: "#647d88", strokeDasharray: "4 4" }} />
                   <Line type="linear" dataKey={metric} stroke={selected.color} strokeWidth={2.5} connectNulls={false} dot={values.length === 1 ? { r: 4 } : false} activeDot={{ r: 5 }} isAnimationActive={false} />
                 </LineChart></ResponsiveContainer> : <div className="chart-empty"><Activity size={30} /><h3>{busy ? "Loading sensor history" : "No measurements in this window"}</h3><p>{busy ? "Connecting to your station’s feed…" : "Try a longer time range, or check the kit’s power and Wi-Fi."}</p></div>}
@@ -135,11 +138,11 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
               {data?.historyPartial && <p className="history-warning">Some history couldn’t load. Current readings are available.</p>}
             </section>
 
-            <aside className="station-panel panel"><div className="station-art" aria-hidden="true"><svg viewBox="0 0 240 100"><ellipse cx="120" cy="63" rx="85" ry="25" /><ellipse cx="120" cy="63" rx="61" ry="18" /><ellipse cx="120" cy="63" rx="35" ry="10" /><path d="M120 15C120 15 105 35 105 43a15 15 0 0 0 30 0c0-8-15-28-15-28Z" /><path d="M120 43v20" /></svg></div><h2>One station.<br />Always in reach.</h2><p>The kit sends readings over Wi-Fi. Your laptop can stay closed.</p><div className="station-facts"><div><span>Feed status</span><strong className={live ? "text-mint" : ""}>{live ? "Active" : "Waiting"}</strong></div><div><span>Upload interval</span><strong>16 seconds</strong></div><div><span>Dashboard refresh</span><strong>Automatic</strong></div><div><span>Data source</span><strong>ThingSpeak</strong></div></div><button className="text-button" onClick={() => setView("setup")}>Taking it to the pool <ArrowUpRight size={16} /></button></aside>
+            <AlertPanel refresh={refresh} />
           </div>
 
           <section className="table-panel panel"><div className="panel-heading"><div><h2>Recent readings</h2><p>Latest entries in this time window. Times shown in your local timezone.</p></div><button className="secondary-button" onClick={() => downloadCsv(readings)} disabled={!readings.length}><Download size={15} />Export CSV</button></div><div className="table-scroll"><table><thead><tr><th scope="col">Recorded at</th><th scope="col">pH</th><th scope="col">ORP <span>mV</span></th><th scope="col">Temperature <span>°C</span></th><th scope="col">Entry</th></tr></thead><tbody>{readings.slice(-6).reverse().map(row => <tr key={row.id}><td>{clock(row.time, true)}</td><td className="ph-cell">{formatValue(row.ph, "ph")}</td><td>{formatValue(row.orp, "orp")}</td><td>{formatValue(row.temperature, "temperature")}</td><td className="muted">#{row.id}</td></tr>)}{!readings.length && <tr><td colSpan={5} className="empty-row">{busy ? "Loading readings…" : "No readings in this time window."}</td></tr>}</tbody></table></div></section>
-          <div className="data-note"><Info size={15} /><p>Readings reflect whatever the probes are immersed in, including calibration or storage solution. They do not, on their own, establish whether water is safe to swim in.</p></div>
+          <div className="data-note"><Info size={15} /><p>Measurements support on-site checks; they do not establish animal safety. Pause alerting before moving, cleaning, or calibrating the probes.</p></div>
         </>}
         <footer className="page-footer"><span><span className="footer-mark"><Waves size={15} /></span>AquaSense <span className="footer-separator">/</span> Atlas Scientific Wi-Fi Pool Kit</span><button onClick={() => setRefresh(value => value + 1)} disabled={busy} className="refresh-button"><RefreshCw size={14} className={busy ? "spinning" : ""} />{busy ? "Updating" : "Refresh now"}</button></footer>
       </main>
@@ -148,10 +151,11 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
 }
 
 function StationGuide() {
-  return <div className="setup-view"><section className="page-heading"><div><h1>Take the station with you.</h1><p>A power connection and Wi-Fi are all it needs to keep reporting.</p></div><span className="status-pill live"><Check size={14} />pH and ORP calibrated</span></section>
-    <div className="guide-grid"><section className="panel guide-panel"><Wifi className="guide-icon" /><h2>At home, right now</h2><p>The kit connects to its configured Wi-Fi automatically after power-on. It can also renew the specifically approved guest portal session.</p><ul><li>Use the kit’s USB connection with a suitable power adapter.</li><li>Your MacBook is only needed for programming or serial calibration.</li><li>Open this website on your phone or computer to check readings.</li></ul></section>
-    <section className="panel guide-panel"><Waves className="guide-icon" /><h2>When you reach the pool</h2><ol><li>Get the pool’s <strong>2.4 GHz Wi-Fi name</strong> and any required password.</li><li>Connect the kit to your Mac once so we can update its Wi-Fi credentials.</li><li>Verify fresh readings here, then move the USB cable to its power adapter.</li></ol><p className="guide-note">The configured guest portal is supported. Other sign-in pages need inspection first. If the approved disclaimer changes, automatic acceptance pauses.</p></section></div>
+  return <div className="setup-view"><section className="page-heading"><div><h1>Station guide</h1><p>Network connection, alert rules, and probe maintenance.</p></div><span className="status-pill live"><Check size={14} />pH and ORP calibrated</span></section>
+    <div className="guide-grid"><section className="panel guide-panel"><Wifi className="guide-icon" /><h2>Power and connection</h2><p>The kit connects to its configured Wi-Fi automatically after power-on. It can also renew the specifically approved guest portal session.</p><ul><li>Use the kit’s USB connection with a suitable power adapter.</li><li>Your MacBook is only needed for programming or serial calibration.</li><li>Open this website on your phone or computer to check readings.</li></ul></section>
+    <section className="panel guide-panel"><Waves className="guide-icon" /><h2>Changing networks</h2><ol><li>Get the pool’s <strong>2.4 GHz Wi-Fi name</strong> and any required password.</li><li>Connect the kit to your Mac once so we can update its Wi-Fi credentials.</li><li>Verify fresh readings here, then move the USB cable to its power adapter.</li></ol><p className="guide-note">The configured guest portal is supported. Other sign-in pages need inspection first. If the approved disclaimer changes, automatic acceptance pauses.</p></section></div>
     <section className="panel guide-panel"><h2>Know what the status means</h2><div className="status-explainer"><div><span className="status-pill live"><span className="status-dot" />Receiving data</span><p>A reading arrived within the last minute. New measurements are normally uploaded about every 16 seconds.</p></div><div><span className="status-pill waiting"><span className="status-dot" />No recent readings</span><p>The last reading is older than a minute. Check power, Wi-Fi, or whether <code>poll</code> mode paused uploads. The last values stay visible with their age.</p></div></div></section>
+    <section className="panel guide-panel"><h2>Rapid-change email alerts</h2><p>The background monitor checks once per minute for a change of at least 0.5 pH units or 2°C within two minutes. A second consecutive reading must confirm the change. The reference is the median of three earlier readings.</p><p>Repeated alerts for the same sensor are suppressed for 15 minutes unless a further change of at least 1.0 pH unit or 4°C occurs. Missing readings, stale data, and gaps in transmission do not generate change alerts. The monitor learns a new baseline after a gap.</p><p>These are operational warning rules, not species-specific lethal limits. Staff should inspect the enclosure and verify unexpected measurements. Ask the operator to disable alerts before probe handling, cleaning, or calibration; the public dashboard cannot change alert settings.</p></section>
     <details className="panel guide-panel"><summary>Calibration and maintenance <ChevronDown size={18} /></summary><div className="details-content"><p>pH was calibrated at 7.00, 4.00, and 10.00. ORP was calibrated in 225 mV reference solution on October 14, 2026. The temperature probe retains its existing calibration.</p><p>For later calibration, connect USB serial at 9600 baud with carriage-return line endings. Use <code>poll</code> to pause uploads and observe readings, then <code>datalog</code> to resume. Only send calibration commands while the correct probe is stable in the matching reference solution.</p><p>Rinse probes between solutions and return them to the appropriate storage solution when finished. This dashboard is read-only and cannot dose chemicals or change calibration.</p></div></details>
   </div>;
 }

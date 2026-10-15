@@ -1,5 +1,6 @@
+import { fetchSensorReadings } from "@/lib/thingspeak";
 import { getChatGPTUser } from "../../chatgpt-auth";
-import { mergeReadings, parseFeed, ranges, type Range } from "@/lib/telemetry";
+import { mergeReadings, ranges, type Range } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store, max-age=0" };
@@ -12,21 +13,13 @@ export async function GET(request: Request) {
   if (!key) return Response.json({ error: "The station connection has not been configured." }, { status: 503, headers });
   const minutes = ranges[range as Range];
 
-  async function fetchFeed(results: number) {
-    const url = new URL("https://api.thingspeak.com/channels/3536852/feeds.json");
-    url.searchParams.set("api_key", key!);
-    url.searchParams.set("results", String(results));
-    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-    if (!response.ok) throw new Error("Sensor service unavailable");
-    return parseFeed(await response.json());
-  }
 
   try {
     // ThingSpeak caches feeds over 100 entries for five minutes. Merge a fresh
     // 100-entry feed so larger history views never delay the current readings.
     const [recentResult, historyResult] = await Promise.allSettled([
-      fetchFeed(100),
-      minutes > 15 ? fetchFeed(Math.min(8000, Math.ceil(minutes * 60 / 16) + 100)) : Promise.resolve([]),
+      fetchSensorReadings(100),
+      minutes > 15 ? fetchSensorReadings(Math.min(8000, Math.ceil(minutes * 60 / 16) + 100)) : Promise.resolve([]),
     ]);
     if (recentResult.status !== "fulfilled") throw new Error("Current readings unavailable");
     const all = mergeReadings(historyResult.status === "fulfilled" ? historyResult.value : [], recentResult.value);
