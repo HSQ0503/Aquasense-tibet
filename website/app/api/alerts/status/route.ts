@@ -29,8 +29,9 @@ export async function GET() {
     base.lastAlertAt = recent?.event.confirmed.time ?? null; base.lastDelivery = recent?.status ?? null;
     base.pending = state.deliveries.filter(d => d.status === "queued").length;
     const late = !state.lastCheckedAt || Date.now() - Date.parse(state.lastCheckedAt) > 180000;
-    if (late || state.health === "error" || state.deliveries.some(d => d.status === "failed")) {
-      base.status = "needs_attention"; base.message = late ? "The background check is overdue." : state.health === "error" ? "The sensor feed could not be checked." : "An alert could not be delivered. Check delivery records.";
+    const retrying = state.deliveries.some(d => d.status === "queued" && d.error);
+    if (late || retrying || state.health === "error" || state.deliveries.some(d => d.status === "failed")) {
+      base.status = "needs_attention"; base.message = late ? "The background check is overdue." : state.health === "error" ? "The sensor feed could not be checked." : retrying ? "An alert is awaiting delivery; automatic retries are running." : "An alert could not be delivered. Check delivery records.";
     } else if (["stale", "no_data", "partial"].includes(state.health)) {
       base.status = "waiting"; base.message = "Waiting for complete, recent sensor readings.";
     } else if (state.health === "learning") {

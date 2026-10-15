@@ -6,7 +6,8 @@ export function alertStore(pathname = "aquasense/monitor-v1.json"): StateStore {
   if (!token) throw new Error("Alert storage is not configured");
   return {
     async read() {
-      const result = await get(pathname, { access: "private", useCache: false, token, abortSignal: AbortSignal.timeout(10000) });
+      // Conditional writes need the stored object ETag, not a compressed response's weak ETag.
+      const result = await get(pathname, { access: "private", useCache: false, token, headers: { "Accept-Encoding": "identity" }, abortSignal: AbortSignal.timeout(10000) });
       if (!result) return null;
       if (result.statusCode !== 200) throw new Error("Unexpected storage response");
       const state = await new Response(result.stream).json() as MonitorState;
