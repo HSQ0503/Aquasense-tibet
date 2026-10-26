@@ -33,7 +33,7 @@ export function AlertPanel({ refresh }: { refresh: number }) {
   return <aside className="alerts-panel panel" aria-label="Email alert monitoring">
     <div className="alerts-heading"><h2><Bell size={16} />Email alerts</h2><span className={`alert-monitor-status ${active ? "active" : "pending"}`} role="status">{active ? <CircleCheck size={14} /> : <CircleAlert size={14} />}{title}</span></div>
     <p className="alert-description">{failed ? "Monitoring status could not be verified. Refresh to try again." : status?.message ?? "Checking the background monitor."}</p>
-    <dl className="alert-rules"><div><dt>pH change</dt><dd>≥ {rules?.ph ?? 0.5}</dd></div><div><dt>Temp. change</dt><dd>≥ {rules?.temperature ?? 2}°C</dd></div><div><dt>Time window</dt><dd>2 minutes</dd></div><div><dt>Confirmation</dt><dd>2 readings</dd></div></dl>
+    <dl className="alert-rules"><div><dt>pH change</dt><dd>≥ {rules?.ph ?? 0.5}</dd></div><div><dt>Temperature change</dt><dd>≥ {rules?.temperature ?? 2}°C</dd></div><div><dt>Time window</dt><dd>2 minutes</dd></div><div><dt>Confirmation</dt><dd>2 readings</dd></div></dl>
     <div className="alert-delivery"><span>Notifications</span><strong>{status?.recipientCount ? `${status.recipientCount} staff recipients` : "Not yet verified"}</strong></div>
     <p className="alert-footnote">Checks run with the website closed. These are change-detection rules, not lethal thresholds for animals.</p>
     {status?.checkedAt && <div className="monitor-time">Last check {new Date(status.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>}

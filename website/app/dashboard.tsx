@@ -3,18 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertPanel } from "./alert-panel";
-import { Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Check, ChevronDown, Download, Droplets, Info, RefreshCw, ShieldCheck, Thermometer, Waves, Wifi, Zap } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Check, ChevronDown, Download, Info, RefreshCw, Waves, Wifi } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { chartReadings, isRecent, ranges, type Metric, type Range, type Reading, type Telemetry } from "@/lib/telemetry";
 
 // minSpan keeps sensor noise from looking dramatic when the window is nearly flat.
 const metrics = {
-  ph: { name: "pH", label: "Acidity / alkalinity", unit: "pH", decimals: 2, color: "#7cb4f0", icon: Droplets, minSpan: 0.3 },
-  orp: { name: "ORP", label: "Oxidation-reduction", unit: "mV", decimals: 0, color: "#e3b56b", icon: Zap, minSpan: 20 },
-  temperature: { name: "Temperature", label: "Water temperature", unit: "°C", decimals: 2, color: "#5fd0b0", icon: Thermometer, minSpan: 1 },
+  ph: { name: "pH", label: "Acidity", unit: "", decimals: 2, color: "#8ab4ff", minSpan: 0.3 },
+  orp: { name: "ORP", label: "Oxidation-reduction potential", unit: "mV", decimals: 0, color: "#f0bd5e", minSpan: 20 },
+  temperature: { name: "Temperature", label: "Water temperature", unit: "°C", decimals: 2, color: "#5fd9b8", minSpan: 1 },
 } as const;
 const metricKeys = Object.keys(metrics) as Metric[];
-const rangeLabels: Record<Range, string> = { "15m": "15 min", "1h": "1 hour", "6h": "6 hours", "24h": "24 hours" };
+const rangeLabels: Record<Range, string> = { "15m": "15 minutes", "1h": "hour", "6h": "6 hours", "24h": "24 hours" };
+const axisTick = { fill: "#7f979b", fontSize: 11 };
+
+type ChartRow = ReturnType<typeof chartReadings>[number];
 
 function formatValue(value: number | null | undefined, metric: Metric) {
   return value == null ? "—" : value.toFixed(metrics[metric].decimals);
@@ -22,13 +25,13 @@ function formatValue(value: number | null | undefined, metric: Metric) {
 function formatChange(change: number | null, metric: Metric) {
   if (change == null) return "—";
   const rounded = Number(change.toFixed(metrics[metric].decimals));
-  return `${rounded > 0 ? "+" : rounded < 0 ? "−" : "±"}${Math.abs(rounded).toFixed(metrics[metric].decimals)}`;
+  if (rounded === 0) return "No change";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(metrics[metric].decimals)}`;
 }
 function clock(time: string | number, seconds = false) {
   return new Date(time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", ...(seconds ? { second: "2-digit" } : {}) });
 }
-function ageLabel(time: string | undefined, now: number) {
-  if (!time || !now) return "Waiting for a reading";
+function ageLabel(time: string, now: number) {
   const seconds = Math.max(0, Math.floor((now - Date.parse(time)) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -49,11 +52,12 @@ function niceStep(rough: number) {
   const magnitude = 10 ** Math.floor(Math.log10(rough));
   return ([1, 2, 2.5, 5, 10].find(factor => factor * magnitude >= rough) ?? 10) * magnitude;
 }
-function chartTicks(low: number | null, high: number | null, metric: Metric) {
-  if (low === null || high === null) return [0, 1];
-  const span = Math.max((high - low) * 1.4, metrics[metric].minSpan);
+function chartTicks(values: number[], metric: Metric) {
+  if (!values.length) return [0, 1];
+  const low = Math.min(...values); const high = Math.max(...values);
+  const span = Math.max((high - low) * 1.5, metrics[metric].minSpan);
   const middle = (low + high) / 2;
-  const step = niceStep(span / 4);
+  const step = niceStep(span / 3);
   const start = Math.floor((middle - span / 2) / step) * step;
   const end = Math.ceil((middle + span / 2) / step) * step;
   return Array.from({ length: Math.round((end - start) / step) + 1 }, (_, index) => Number((start + index * step).toFixed(4)));
@@ -61,24 +65,19 @@ function chartTicks(low: number | null, high: number | null, metric: Metric) {
 
 export function Dashboard({ publicReadings = false }: { publicReadings?: boolean }) {
   const [range, setRange] = useState<Range>("15m");
-  const [metric, setMetric] = useState<Metric>("ph");
   const [snapshot, setSnapshot] = useState<{ range: Range; data: Telemetry } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [now, setNow] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [view, setView] = useState<"live" | "setup">("live");
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const data = snapshot?.range === range ? snapshot.data : null;
   const latest = snapshot?.data.latest;
   const live = !error && isRecent(latest?.time, now);
-  const selected = metrics[metric];
   const readings = data?.readings ?? [];
   const chart = useMemo(() => chartReadings(data?.readings ?? []), [data]);
-  const values = metricValues(readings, metric);
-  const low = values.length ? Math.min(...values) : null;
-  const high = values.length ? Math.max(...values) : null;
-  const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-  const ticks = chartTicks(low, high, metric);
+  const hovered = hoverIndex == null ? null : chart[hoverIndex] ?? null;
   const status = error ? "Connection interrupted" : !latest ? (busy ? "Connecting" : "Waiting for readings") : live ? "Live" : "No recent readings";
 
   useEffect(() => {
@@ -118,9 +117,9 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-inner">
-          <Link className="brand" href="/" aria-label="AquaSense home"><span className="brand-icon"><Waves size={18} /></span>AquaSense</Link>
+          <Link className="brand" href="/" aria-label="AquaSense home"><Waves size={20} />AquaSense</Link>
           <nav aria-label="Main navigation"><button className={view === "live" ? "active" : ""} onClick={() => setView("live")}>Live readings</button><button className={view === "setup" ? "active" : ""} onClick={() => setView("setup")}>Station guide</button></nav>
-          <span className="private-badge"><ShieldCheck size={14} />{publicReadings ? "Public station" : "Private station"}</span>
+          <span className="station-access">{publicReadings ? "Public station" : "Private station"}</span>
         </div>
       </header>
 
@@ -128,101 +127,98 @@ export function Dashboard({ publicReadings = false }: { publicReadings?: boolean
         {view === "setup" ? <StationGuide /> : <>
           <section className="page-heading">
             <div>
-              <p className="eyebrow">Tibet Butler Sensor <span aria-hidden="true">·</span> Station 3536852</p>
               <h1>Water monitoring</h1>
+              <p className="heading-note">Tibet Butler sensor, station 3536852</p>
             </div>
             <div className="connection-state">
               <span role="status" className={`status-pill ${live ? "live" : "waiting"}`}><span className="status-dot" />{status}</span>
-              <span className="muted">{latest ? `Updated ${ageLabel(latest.time, now)}` : "Waiting for a reading"}</span>
+              <span>{latest && now ? `Updated ${ageLabel(latest.time, now)}` : "Waiting for a reading"}</span>
             </div>
           </section>
 
           {error && <div className="notice" role="alert"><Info size={18} /><div>{error} {latest && "Showing the last received values."}{!publicReadings && <a href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in again</a>}</div></div>}
           {!error && latest && !live && <div className="notice"><Wifi size={18} /><span>No new reading for over a minute. Check the kit’s power and Wi-Fi, or send <code>datalog</code> if calibration paused uploads.</span></div>}
 
-          <section className="measurements" aria-label="Latest sensor readings">
-            {metricKeys.map(key => {
-              const config = metrics[key]; const Icon = config.icon;
-              const series = metricValues(readings, key);
-              const change = series.length > 1 ? series[series.length - 1] - series[0] : null;
-              const TrendIcon = change == null || Math.abs(change) < 10 ** -config.decimals ? ArrowRight : change > 0 ? ArrowUpRight : ArrowDownRight;
-              return <button key={key} className={`measurement ${metric === key ? "selected" : ""}`} style={{ "--metric": config.color } as React.CSSProperties} onClick={() => setMetric(key)} aria-pressed={metric === key} aria-label={`Show ${config.name} trend`}>
-                <div className="measurement-top">
-                  <span className="measurement-name"><span className="metric-icon"><Icon size={15} /></span>{config.name}</span>
-                  <span className="measurement-label">{latest?.[key] == null ? "No measurement" : config.label}</span>
-                </div>
-                <div className="measurement-value">{formatValue(latest?.[key], key)}<span>{config.unit}</span></div>
-                <div className="measurement-footer">
-                  <span className="measurement-change"><TrendIcon size={14} /><strong>{formatChange(change, key)}</strong> in {rangeLabels[range]}</span>
-                  <Sparkline values={series} minSpan={config.minSpan} />
-                </div>
-              </button>;
-            })}
+          <section className="monitor" aria-label="Sensor readings and trends">
+            <div className="monitor-bar">
+              <p>{hovered ? <>Showing values at <strong>{clock(hovered.timestamp, true)}</strong></> : <>Last {rangeLabels[range]}, {readings.length} readings</>}</p>
+              <div className="range-picker" role="group" aria-label="Time window">{(Object.keys(ranges) as Range[]).map(key => <button key={key} onClick={() => setRange(key)} aria-pressed={range === key}>{key}</button>)}</div>
+            </div>
+            {metricKeys.map((key, index) => <MetricRow key={key} metric={key} chart={chart} readings={readings} latest={latest?.[key] ?? null} hovered={hovered} range={range} busy={busy} showTimeAxis={index === metricKeys.length - 1} onHover={setHoverIndex} />)}
+            {data?.historyPartial && <p className="history-warning">Some history couldn’t load. Current readings are available.</p>}
           </section>
 
-          <div className="main-grid">
-            <section className="chart-panel panel" style={{ "--metric": selected.color } as React.CSSProperties}>
+          <div className="lower-grid">
+            <section className="table-panel panel">
               <div className="panel-heading">
-                <div><h2>{selected.name} trend</h2><p>Last {rangeLabels[range]} <span className="separator">·</span> {values.length} readings</p></div>
-                <div className="range-picker" role="group" aria-label="Chart time range">{(Object.keys(ranges) as Range[]).map(key => <button key={key} onClick={() => setRange(key)} aria-pressed={range === key}>{key}</button>)}</div>
+                <div><h2>Recent readings</h2><p>Newest first, in your local time.</p></div>
+                <button className="secondary-button" onClick={() => downloadCsv(readings)} disabled={!readings.length}><Download size={15} />Export CSV</button>
               </div>
-              <dl className="chart-stats">
-                <div><dt>Latest</dt><dd>{formatValue(latest?.[metric], metric)}<span>{selected.unit}</span></dd></div>
-                <div><dt>Average</dt><dd>{formatValue(average, metric)}<span>{selected.unit}</span></dd></div>
-                <div><dt>Low</dt><dd>{formatValue(low, metric)}<span>{selected.unit}</span></dd></div>
-                <div><dt>High</dt><dd>{formatValue(high, metric)}<span>{selected.unit}</span></dd></div>
-              </dl>
-              <div className="chart-container" role="img" aria-label={`${selected.name} chart for the last ${rangeLabels[range]}. Values are also available in the readings table and CSV export.`}>
-                {values.length ? <ResponsiveContainer width="100%" height="100%"><AreaChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs><linearGradient id={`fill-${metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={selected.color} stopOpacity={0.28} /><stop offset="100%" stopColor={selected.color} stopOpacity={0} /></linearGradient></defs>
-                  <CartesianGrid stroke="#1f2c3a" vertical={false} />
-                  <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} tickFormatter={value => clock(Number(value))} tick={{ fill: "#8293a6", fontSize: 12 }} axisLine={{ stroke: "#26354a" }} tickLine={false} minTickGap={70} tickMargin={10} />
-                  <YAxis domain={[ticks[0], ticks[ticks.length - 1]]} ticks={ticks} tick={{ fill: "#8293a6", fontSize: 12 }} tickFormatter={value => Number(value).toFixed(selected.decimals)} axisLine={false} tickLine={false} width={52} />
-                  <Tooltip contentStyle={{ background: "#0f1824", border: "1px solid #2a3a4f", borderRadius: 8, color: "#e8eef5", fontSize: 13, boxShadow: "0 8px 24px rgba(0,0,0,.4)" }} labelStyle={{ color: "#8293a6", marginBottom: 4 }} labelFormatter={value => clock(Number(value), true)} formatter={value => [value == null ? "Missing" : `${Number(value).toFixed(selected.decimals)} ${selected.unit}`, selected.name]} cursor={{ stroke: "#3c4f66", strokeDasharray: "4 4" }} />
-                  <Area type="monotone" dataKey={metric} stroke={selected.color} strokeWidth={2} fill={`url(#fill-${metric})`} connectNulls={false} dot={values.length === 1 ? { r: 4, fill: selected.color } : false} activeDot={{ r: 5, strokeWidth: 2, stroke: "#0f1824" }} isAnimationActive={false} />
-                </AreaChart></ResponsiveContainer> : <div className="chart-empty"><Activity size={28} /><h3>{busy ? "Loading sensor history" : "No measurements in this window"}</h3><p>{busy ? "Connecting to your station’s feed…" : "Try a longer time range, or check the kit’s power and Wi-Fi."}</p></div>}
-              </div>
-              <div className="chart-caption"><span><span className="legend-dot" />Measured {metric === "temperature" ? "temperature" : selected.name}</span><span>Gaps indicate missing readings</span></div>
-              {data?.historyPartial && <p className="history-warning">Some history couldn’t load. Current readings are available.</p>}
+              <div className="table-scroll"><table>
+                <thead><tr><th scope="col">Time</th><th scope="col">pH</th><th scope="col">ORP <span>mV</span></th><th scope="col">Temp <span>°C</span></th><th scope="col">Entry</th></tr></thead>
+                <tbody>
+                  {readings.slice(-8).reverse().map(row => <tr key={row.id}><td>{clock(row.time, true)}</td><td>{formatValue(row.ph, "ph")}</td><td>{formatValue(row.orp, "orp")}</td><td>{formatValue(row.temperature, "temperature")}</td><td className="muted">{row.id}</td></tr>)}
+                  {!readings.length && <tr><td colSpan={5} className="empty-row">{busy ? "Loading readings…" : "No readings in this time window."}</td></tr>}
+                </tbody>
+              </table></div>
             </section>
-
             <AlertPanel refresh={refresh} />
           </div>
-
-          <section className="table-panel panel">
-            <div className="panel-heading">
-              <div><h2>Recent readings</h2><p>Latest entries in this window, in your local time.</p></div>
-              <button className="secondary-button" onClick={() => downloadCsv(readings)} disabled={!readings.length}><Download size={15} />Export CSV</button>
-            </div>
-            <div className="table-scroll"><table>
-              <thead><tr><th scope="col">Recorded at</th><th scope="col">pH</th><th scope="col">ORP <span>mV</span></th><th scope="col">Temp <span>°C</span></th><th scope="col">Entry</th></tr></thead>
-              <tbody>
-                {readings.slice(-8).reverse().map(row => <tr key={row.id}><td>{clock(row.time, true)}</td><td>{formatValue(row.ph, "ph")}</td><td>{formatValue(row.orp, "orp")}</td><td>{formatValue(row.temperature, "temperature")}</td><td className="muted">#{row.id}</td></tr>)}
-                {!readings.length && <tr><td colSpan={5} className="empty-row">{busy ? "Loading readings…" : "No readings in this time window."}</td></tr>}
-              </tbody>
-            </table></div>
-          </section>
           <div className="data-note"><Info size={14} /><p>Measurements support on-site checks; they do not establish animal safety. Pause alerting before moving, cleaning, or calibrating the probes.</p></div>
         </>}
-        <footer className="page-footer"><span><Waves size={14} />AquaSense <span className="footer-separator">/</span> Atlas Scientific Wi-Fi Pool Kit</span><button onClick={() => setRefresh(value => value + 1)} disabled={busy} className="refresh-button"><RefreshCw size={14} className={busy ? "spinning" : ""} />{busy ? "Updating" : "Refresh now"}</button></footer>
+        <footer className="page-footer"><span>AquaSense with the Atlas Scientific Wi-Fi Pool Kit</span><button onClick={() => setRefresh(value => value + 1)} disabled={busy} className="refresh-button"><RefreshCw size={14} className={busy ? "spinning" : ""} />{busy ? "Updating" : "Refresh now"}</button></footer>
       </main>
     </div>
   );
 }
 
-function Sparkline({ values, minSpan }: { values: number[]; minSpan: number }) {
-  if (values.length < 2) return <span className="sparkline" />;
-  const step = Math.max(1, Math.floor(values.length / 60));
-  const points = values.filter((_, index) => index % step === 0 || index === values.length - 1);
-  const low = Math.min(...points); const high = Math.max(...points);
-  const spread = Math.max(high - low, minSpan);
-  const floor = (low + high - spread) / 2;
-  const path = points.map((value, index) => `${(index / (points.length - 1)) * 100},${28 - ((value - floor) / spread) * 26}`).join(" ");
-  return <svg className="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points={path} /></svg>;
+type MetricRowProps = { metric: Metric; chart: ChartRow[]; readings: Reading[]; latest: number | null; hovered: ChartRow | null; range: Range; busy: boolean; showTimeAxis: boolean; onHover: (index: number | null) => void };
+
+function MetricRow({ metric, chart, readings, latest, hovered, range, busy, showTimeAxis, onHover }: MetricRowProps) {
+  const config = metrics[metric];
+  const values = metricValues(readings, metric);
+  const low = values.length ? Math.min(...values) : null;
+  const high = values.length ? Math.max(...values) : null;
+  const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const change = values.length > 1 ? values[values.length - 1] - values[0] : null;
+  const ticks = chartTicks(values, metric);
+  const lastIndex = chart.findLastIndex(row => row[metric] != null);
+  const shown = hovered ? hovered[metric] : latest;
+  const position = shown == null || low == null || high == null || high === low ? 0.5 : (shown - low) / (high - low);
+  const gradientId = `fill-${metric}`;
+
+  return <div className="metric-row" style={{ "--metric": config.color } as React.CSSProperties}>
+    <div className="readout">
+      <h2><span className="metric-swatch" />{config.name}<span className="readout-label">{config.label}</span></h2>
+      <p className="readout-value"><span>{formatValue(shown, metric)}</span>{config.unit && <small>{config.unit}</small>}</p>
+      <p className="readout-change">{hovered ? (shown == null || latest == null ? "No reading at this time" : <><strong>{formatChange(latest - shown, metric)}</strong> from here to now</>) :<><strong>{formatChange(change, metric)}</strong> over the last {rangeLabels[range]}</>}</p>
+      <div className="range-track" aria-hidden="true"><span style={{ left: `${Math.min(1, Math.max(0, position)) * 100}%` }} /></div>
+      <dl className="readout-stats">
+        <div><dt>Low</dt><dd>{formatValue(low, metric)}</dd></div>
+        <div><dt>Average</dt><dd>{formatValue(average, metric)}</dd></div>
+        <div><dt>High</dt><dd>{formatValue(high, metric)}</dd></div>
+      </dl>
+    </div>
+    <div className={`trace ${showTimeAxis ? "with-axis" : ""}`} role="img" aria-label={`${config.name} over the last ${rangeLabels[range]}. Values are also listed in the readings table and CSV export.`}>
+      {values.length ? <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chart} syncId="aquasense" margin={{ top: 12, right: 0, left: 0, bottom: showTimeAxis ? 0 : 10 }} onMouseMove={state => onHover(state.activeTooltipIndex == null ? null : Number(state.activeTooltipIndex))} onMouseLeave={() => onHover(null)}>
+          <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={config.color} stopOpacity={0.24} /><stop offset="100%" stopColor={config.color} stopOpacity={0.02} /></linearGradient></defs>
+          <CartesianGrid stroke="#1a2e36" vertical={false} />
+          <XAxis dataKey="timestamp" type="number" domain={["dataMin", "dataMax"]} hide={!showTimeAxis} tickFormatter={value => clock(Number(value))} tick={axisTick} axisLine={false} tickLine={false} minTickGap={80} tickMargin={10} height={showTimeAxis ? 28 : 0} />
+          <YAxis orientation="right" domain={[ticks[0], ticks[ticks.length - 1]]} ticks={ticks} tick={axisTick} tickFormatter={value => Number(value).toFixed(config.decimals)} axisLine={false} tickLine={false} width={48} tickMargin={8} />
+          {average != null && <ReferenceLine y={average} stroke={config.color} strokeOpacity={0.45} strokeDasharray="2 4" />}
+          <Tooltip content={() => null} cursor={{ stroke: "#58737a", strokeWidth: 1 }} isAnimationActive={false} />
+          <Area type="monotone" dataKey={metric} stroke={config.color} strokeWidth={1.75} fill={`url(#${gradientId})`} connectNulls={false} isAnimationActive={false}
+            dot={({ cx, cy, index }) => index === lastIndex && cx != null && cy != null ? <g key="last"><circle cx={cx} cy={cy} r={7} fill={config.color} opacity={0.2} /><circle cx={cx} cy={cy} r={3.5} fill={config.color} /></g> : <g key={index} />}
+            activeDot={{ r: 4, fill: config.color, stroke: "#0b161c", strokeWidth: 2 }} />
+        </AreaChart>
+      </ResponsiveContainer> : <p className="trace-empty">{busy ? "Loading history…" : "No measurements in this window."}</p>}
+    </div>
+  </div>;
 }
 
 function StationGuide() {
-  return <div className="setup-view"><section className="page-heading"><div><p className="eyebrow">Tibet Butler Sensor <span aria-hidden="true">·</span> Station 3536852</p><h1>Station guide</h1><p className="heading-note">Network connection, alert rules, and probe maintenance.</p></div><span className="status-pill live"><Check size={14} />pH and ORP calibrated</span></section>
+  return <div className="setup-view"><section className="page-heading"><div><h1>Station guide</h1><p className="heading-note">Network connection, alert rules, and probe maintenance.</p></div><span className="status-pill live"><Check size={14} />pH and ORP calibrated</span></section>
     <div className="guide-grid"><section className="panel guide-panel"><Wifi className="guide-icon" /><h2>Power and connection</h2><p>The kit connects to its configured Wi-Fi automatically after power-on. It can also renew the specifically approved guest portal session.</p><ul><li>Use the kit’s USB connection with a suitable power adapter.</li><li>Your MacBook is only needed for programming or serial calibration.</li><li>Open this website on your phone or computer to check readings.</li></ul></section>
     <section className="panel guide-panel"><Waves className="guide-icon" /><h2>Changing networks</h2><ol><li>Get the pool’s <strong>2.4 GHz Wi-Fi name</strong> and any required password.</li><li>Connect the kit to your Mac once so we can update its Wi-Fi credentials.</li><li>Verify fresh readings here, then move the USB cable to its power adapter.</li></ol><p className="guide-note">The configured guest portal is supported. Other sign-in pages need inspection first. If the approved disclaimer changes, automatic acceptance pauses.</p></section></div>
     <section className="panel guide-panel"><h2>Know what the status means</h2><div className="status-explainer"><div><span className="status-pill live"><span className="status-dot" />Live</span><p>A reading arrived within the last minute. New measurements are normally uploaded about every 16 seconds.</p></div><div><span className="status-pill waiting"><span className="status-dot" />No recent readings</span><p>The last reading is older than a minute. Check power, Wi-Fi, or whether <code>poll</code> mode paused uploads. The last values stay visible with their age.</p></div></div></section>
